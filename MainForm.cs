@@ -18,15 +18,18 @@ namespace ImageColorMatch
     {
         private Bitmap image;
         private object imageLock;
-        private Image displayImage;
+        private RawBitmapData displayImage;
         private object displayImageLock;
         private SelectMode mode;
         private List<SelectedArea> areas;
         private int[] customColors;
-        private List<Image> tempImages;
-        private object tempImagesLock;
+
+        private Queue<Tuple<WaitCallback, object>> jobs;
+        private object jobsLock;
 
         private Thread backgroundThread;
+
+        private List<Thread> workerThreads;
 
         public MainForm()
         {
@@ -34,12 +37,22 @@ namespace ImageColorMatch
             displayImageLock = new object();
             imageLock = new object();
             areas = new List<SelectedArea>();
-            tempImages = new List<Image>();
-            tempImagesLock = new object();
             backgroundThread = new Thread(new ThreadStart(Background));
             backgroundThread.IsBackground = true;
             backgroundThread.Start();
 
+            jobs = new Queue<Tuple<WaitCallback, object>>();
+            jobsLock = new object();
+
+            workerThreads = new List<Thread>();
+
+            for (int i = 0; i < Environment.ProcessorCount; i++)
+            {
+                Thread workerThread = new Thread(new ThreadStart(Worker));
+                workerThread.IsBackground = true;
+                workerThread.Start();
+                workerThreads.Add(workerThread);
+            }
         }
 
         private void exitToolStripMenuItem_Click(object sender, EventArgs e)
@@ -47,36 +60,39 @@ namespace ImageColorMatch
             Close();
         }
 
+        public void Worker()
+        {
+            while (true)
+            {
+                Tuple<WaitCallback, object> job = new Tuple<WaitCallback, object>(null, null);
+                lock (jobsLock)
+                {
+                    if (jobs.Count > 0)
+                    {
+                        job = jobs.Dequeue();
+                    }
+                }
+                if (job.Item1 != null)
+                {
+                    job.Item1.Invoke(job.Item2);
+                }
+                else
+                {
+                    Thread.Sleep(500);
+                }
+            }
+        }
+
         public void Background()
         {
             while (true)
             {
-                //lock (displayImageLock)
-                //{
-                //    if (displayImage != null && displayImage != pictureBox.Image)
-                //    {
-                //        Invoke((MethodInvoker)delegate
-                //        {
-                //            pictureBox.Image = displayImage;
-                //            pictureBox.Invalidate();
-                //        });
-                //    }
-                //}
-                lock (tempImagesLock)
+                lock (displayImageLock)
                 {
-                    List<Image> newTempImages = new List<Image>();
-                    foreach (Image tempImage in tempImages)
+                    if (displayImage != null && displayImage != pictureBox.Image)
                     {
-                        if (tempImage != pictureBox.Image && tempImage != pictureBox.RenderingImage)
-                        {
-                            tempImage.Dispose();
-                        }
-                        else
-                        {
-                            newTempImages.Add(tempImage);
-                        }
+                        pictureBox.Image = displayImage;
                     }
-                    tempImages = newTempImages;
                 }
                 Thread.Sleep(500);
             }
@@ -104,16 +120,12 @@ namespace ImageColorMatch
 
                     lock (displayImageLock)
                     {
-                        displayImage = image;
-                        pictureBox.Image = image;
+                        displayImage = new RawBitmapData(image);
                     }
 
-                    lock (tempImagesLock)
+                    if (oldImage != null)
                     {
-                        if (oldImage != null)
-                        {
-                            tempImages.Add(oldImage);
-                        }
+                        oldImage.Dispose();
                     }
                 }
             }
@@ -217,6 +229,11 @@ namespace ImageColorMatch
                     }
                 }
             }
+            if (pictureBox.Image != null)
+            {
+                g.DrawString(pictureBox.Image.GetHashCode().ToString("X"), SystemFonts.StatusFont, Brushes.Black, 0, 0);
+            }
+            g.DrawString(numberOfTasks.ToString(), SystemFonts.StatusFont, Brushes.Black, 0, 24);
         }
 
         public Rectangle FromCorners(Point corner1, Point corner2)
@@ -245,67 +262,45 @@ namespace ImageColorMatch
 
             RawBitmapData sourceData = new RawBitmapData(image);
 
-            
-                for (float t11 = 0.905f; t11 < 1.15f; t11 += 0.05f)
-                {
-                    for (float t22 = 0.905f; t22 < 1.15f; t22 += 0.05f)
-                    {
-                        for (float t33 = 0.905f; t33 < 1.15f; t33 += 0.05f)
-                        {
-                            for (float t12 = -0.105f; t12 < 0.15f; t12 += 0.05f)
-                            {
-                                for (float t13 = -0.105f; t13 < 0.15f; t13 += 0.05f)
-                                {
-                                    for (float t21 = -0.105f; t21 < 0.15f; t21 += 0.05f)
-                                    {
-                                        for (float t23 = -0.105f; t23 < 0.15f; t23 += 0.05f)
-                                        {
-                                            for (float t31 = -0.105f; t31 < 0.15f; t31 += 0.05f)
-                                            {
-                                                for (float t32 = -0.105f; t32 < 0.15f; t32 += 0.05f)
-                                                {
-                                                    ExecuteAsync(new WaitCallback(delegate(object state)
+
+            for (float t11 = 0.98f; t11 < 1.02f; t11 += 0.01f)
             {
-                                                    DenseMatrix matrix = DenseMatrix.Create(3, 3, (row, col) => row == col ? 1 : 0);
-                                                    matrix[0, 0] = t11;
-                                                    matrix[0, 1] = t12;
-                                                    matrix[0, 2] = t13;
-                                                    matrix[1, 0] = t21;
-                                                    matrix[1, 1] = t22;
-                                                    matrix[1, 2] = t23;
-                                                    matrix[2, 0] = t31;
-                                                    matrix[2, 1] = t32;
-                                                    matrix[2, 2] = t33;
+                for (float t22 = 0.98f; t22 < 1.02f; t22 += 0.01f)
+                {
+                    for (float t33 = 0.98f; t33 < 1.02f; t33 += 0.01f)
+                    {
+                        for (float t12 = -0.02f; t12 < 0.02f; t12 += 0.01f)
+                        {
+                            for (float t13 = -0.02f; t13 < 0.02f; t13 += 0.01f)
+                            {
+                                for (float t21 = -0.02f; t21 < 0.02f; t21 += 0.01f)
+                                {
+                                    for (float t23 = -0.02f; t23 < 0.02f; t23 += 0.01f)
+                                    {
+                                        for (float t31 = -0.02f; t31 < 0.02f; t31 += 0.01f)
+                                        {
+                                            for (float t32 = -0.02f; t32 < 0.02f; t32 += 0.01f)
+                                            {
+                        //float t12 = (1f - t11) / 4;
+                        //float t13 = (1f - t11) / 4;
+                        //float t21 = (1f - t22) / 4;
+                        //float t23 = (1f - t22) / 4;
+                        //float t31 = (1f - t33) / 4;
+                        //float t32 = (1f - t33) / 4;
+                                                DenseMatrix matrix = DenseMatrix.Create(3, 3, (row, col) => row == col ? 1 : 0);
+                                                matrix[0, 0] = t11;
+                                                matrix[0, 1] = t12;
+                                                matrix[0, 2] = t13;
+                                                matrix[1, 0] = t21;
+                                                matrix[1, 1] = t22;
+                                                matrix[1, 2] = t23;
+                                                matrix[2, 0] = t31;
+                                                matrix[2, 1] = t32;
+                                                matrix[2, 2] = t33;
 
-                                                    RawBitmapData output = new RawBitmapData(sourceData.Width, sourceData.Height);
+                                                Tuple<RawBitmapData, DenseMatrix> stateTuple = new Tuple<RawBitmapData, DenseMatrix>(sourceData, matrix);
 
-                                                    for (int x = 0; x < sourceData.Width; x++)
-                                                    {
-                                                        for (int y = 0; y < sourceData.Height; y++)
-                                                        {
-                                                            int rawargbValue = sourceData.GetRawARGBValue(x, y);
-                                                            DenseVector vector = new DenseVector(new float[] { rawargbValue >> 16 & 0xFF, rawargbValue >> 8 & 0xFF, rawargbValue & 0xFF });
-                                                            DenseVector converted = matrix * vector;
-                                                            rawargbValue = 0xFF << 24 | converted[0].ToTrimmedByte() << 16 | converted[1].ToTrimmedByte() << 8 | converted[2].ToTrimmedByte();
-                                                            output.SetRawARGBValue(x, y, rawargbValue);
-                                                        }
-                                                    }
-
-                                                    Bitmap transformed = output.GetBitmap();
-
-                                                    lock (tempImagesLock)
-                                                    {
-                                                        tempImages.Add(transformed);
-                                                    }
-                                                    lock (displayImageLock)
-                                                    {
-                                                        displayImage = transformed;
-                                                        Invoke((MethodInvoker)delegate
-                                                        {
-                                                            pictureBox.Image = transformed;
-                                                        });
-                                                    }
-            }));
+                                                ExecuteAsync(new WaitCallback(RunTransformation), stateTuple);
                                             }
                                         }
                                     }
@@ -317,27 +312,72 @@ namespace ImageColorMatch
             }
         }
 
+        public void RunTransformation(object state)
+        {
+            Tuple<RawBitmapData, DenseMatrix> stateTuple = (Tuple<RawBitmapData, DenseMatrix>)state;
+            RawBitmapData sourceData = stateTuple.Item1;
+            DenseMatrix matrix = stateTuple.Item2;
+
+            RawBitmapData output = new RawBitmapData(sourceData.Width, sourceData.Height);
+
+            for (int x = 0; x < sourceData.Width; x++)
+            {
+                for (int y = 0; y < sourceData.Height; y++)
+                {
+                    int rawargbValue = sourceData.GetRawARGBValue(x, y);
+                    DenseVector vector = new DenseVector(new float[] { rawargbValue >> 16 & 0xFF, rawargbValue >> 8 & 0xFF, rawargbValue & 0xFF });
+                    DenseVector converted = matrix * vector;
+                    rawargbValue = 0xFF << 24 | converted[0].ToTrimmedByte() << 16 | converted[1].ToTrimmedByte() << 8 | converted[2].ToTrimmedByte();
+                    output.SetRawARGBValue(x, y, rawargbValue);
+                }
+            }
+
+            //Bitmap transformed = output.GetBitmap();
+
+            //lock (tempImagesLock)
+            //{
+            //    tempImages.Add(transformed);
+            //}
+            lock (displayImageLock)
+            {
+                displayImage = output;
+                //Invoke((MethodInvoker)delegate
+                //{
+                //    pictureBox.Image = transformed;
+                //});
+            }
+        }
+
         public static int numberOfTasks = 0;
         public static ManualResetEvent waitHandle = new ManualResetEvent(false);
         public static object initLock = new object();
 
-        public static void ExecuteAsync(WaitCallback wc)
+        public void ExecuteAsync(WaitCallback wc, object state)
         {
+            Tuple<WaitCallback, object> stateTuple = new Tuple<WaitCallback, object>(wc, state);
+            Tuple<WaitCallback, object> wrapperStateTuple = new Tuple<WaitCallback, object>(new WaitCallback(ExecuteAndDecrement), stateTuple);
             Interlocked.Increment(ref numberOfTasks);
-            ThreadPool.QueueUserWorkItem(new WaitCallback(delegate(object state)
+            lock (jobsLock)
             {
-                try
+                jobs.Enqueue(wrapperStateTuple);
+            }
+        }
+
+        public void ExecuteAndDecrement(object state)
+        {
+            Tuple<WaitCallback, object> stateTuple = (Tuple<WaitCallback, object>)state;
+            WaitCallback wc = stateTuple.Item1;
+            try
+            {
+                wc.Invoke(stateTuple.Item2);
+            }
+            finally
+            {
+                if (Interlocked.Decrement(ref numberOfTasks) == 0)
                 {
-                    wc.Invoke(state);
+                    waitHandle.Set();
                 }
-                finally
-                {
-                    if (Interlocked.Decrement(ref numberOfTasks) == 0)
-                    {
-                        waitHandle.Set();
-                    }
-                }
-            }));
+            }
         }
     }
 

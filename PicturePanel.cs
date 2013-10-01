@@ -10,36 +10,28 @@ namespace ImageColorMatch
 {
     public class PicturePanel : Control
     {
-        private volatile Image image;
-        private volatile Image currentImage;
-        private object imageLock;
-        private object paintLock;
+        private volatile RawBitmapData image;
 
         public PicturePanel()
         {
-            imageLock = new object();
-            paintLock = new object();
             this.DoubleBuffered = true;
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            currentImage = image;
-
-            base.OnPaint(e);
-            if (currentImage != null)
+            RawBitmapData temp = image;
+            if (temp != null)
             {
                 Graphics g = e.Graphics;
-                g.DrawImage(currentImage, 0, 0);
+                using (Bitmap b = temp.GetBitmap())
+                {
+                    g.DrawImage(b, new Rectangle(0, 0, Width, Height));
+                }
             }
+            base.OnPaint(e);
         }
 
-        public Image RenderingImage
-        {
-            get { return currentImage; }
-        }
-
-        public Image Image
+        public RawBitmapData Image
         {
             get
             {
@@ -48,14 +40,21 @@ namespace ImageColorMatch
             set
             {
                 image = value;
-                Invalidate();
+                if (InvokeRequired)
+                {
+                    Invoke(new MethodInvoker(Invalidate));
+                }
+                else
+                {
+                    Invalidate();
+                }
             }
         }
 
         public Point ToImageCoordinate(Point controlCoordinate)
         {
             var pictureBox = this;
-            Image image = pictureBox.Image;
+            RawBitmapData image = pictureBox.Image;
             // test to make sure our image is not null
             if (image == null) return controlCoordinate;
             // Make sure our control width and height are not 0 and our 
@@ -100,7 +99,7 @@ namespace ImageColorMatch
         public Point ToControlCoordinate(Point imageCoordinate)
         {
             var pictureBox = this;
-            Image image = pictureBox.Image;
+            RawBitmapData image = pictureBox.Image;
             // test to make sure our image is not null
             if (image == null) return imageCoordinate;
             // Make sure our control width and height are not 0 and our 

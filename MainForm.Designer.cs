@@ -39,7 +39,7 @@
             this.tslAddExpectedColor = new System.Windows.Forms.ToolStripLabel();
             this.tslRemoveExpectedColor = new System.Windows.Forms.ToolStripLabel();
             this.tsbRun = new System.Windows.Forms.ToolStripButton();
-            this.pictureBox = new ImageColorMatch.PicturePanel();
+            this.pictureBox = new PicturePanel();
             this.toolStripContainer1.BottomToolStripPanel.SuspendLayout();
             this.toolStripContainer1.ContentPanel.SuspendLayout();
             this.toolStripContainer1.TopToolStripPanel.SuspendLayout();
@@ -154,12 +154,15 @@
             // pictureBox
             // 
             this.pictureBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.pictureBox.Image = null;
             this.pictureBox.Location = new System.Drawing.Point(0, 0);
             this.pictureBox.Name = "pictureBox";
             this.pictureBox.Size = new System.Drawing.Size(530, 389);
             this.pictureBox.TabIndex = 0;
-            this.pictureBox.Text = "picturePanel1";
+            this.pictureBox.TabStop = false;
+            this.pictureBox.Paint += new System.Windows.Forms.PaintEventHandler(this.pictureBox_Paint);
+            this.pictureBox.MouseUp += new System.Windows.Forms.MouseEventHandler(this.pictureBox_MouseUp);
+            this.pictureBox.MouseDown += new System.Windows.Forms.MouseEventHandler(this.pictureBox_MouseDown);
+            this.pictureBox.MouseMove += new System.Windows.Forms.MouseEventHandler(this.pictureBox_MouseMove);
             // 
             // MainForm
             // 
