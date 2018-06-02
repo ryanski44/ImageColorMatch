@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -195,6 +196,7 @@ namespace ImageColorMatch
                 {
                     customColors = cd.CustomColors;
                     area.ExpectedColor = cd.Color;
+                    area.InputColor = area.ComputeAverage(new RawBitmapData(image));
                     areas.Add(area);
                     pictureBox.Invalidate();
                 }
@@ -263,52 +265,62 @@ namespace ImageColorMatch
             RawBitmapData sourceData = new RawBitmapData(image);
 
 
-            for (float t11 = 0.98f; t11 < 1.02f; t11 += 0.01f)
+            for (float _t11 = 0.9f; _t11 < 1.1f; _t11 += 0.01f)
             {
-                for (float t22 = 0.98f; t22 < 1.02f; t22 += 0.01f)
+                float t11 = _t11;
+                ExecuteAsync(new WaitCallback(delegate
                 {
-                    for (float t33 = 0.98f; t33 < 1.02f; t33 += 0.01f)
-                    {
-                        for (float t12 = -0.02f; t12 < 0.02f; t12 += 0.01f)
-                        {
-                            for (float t13 = -0.02f; t13 < 0.02f; t13 += 0.01f)
+                    //for (float t22 = 0.8f; t22 < 1.2f; t22 += 0.025f)
+                    //{
+                    //    for (float t33 = 0.8f; t33 < 1.2f; t33 += 0.025f)
+                    //    {
+                            for (float t12 = -0.2f; t12 < 0.2f; t12 += 0.025f)
                             {
-                                for (float t21 = -0.02f; t21 < 0.02f; t21 += 0.01f)
+                                for (float t13 = -0.2f; t13 < 0.2f; t13 += 0.025f)
                                 {
-                                    for (float t23 = -0.02f; t23 < 0.02f; t23 += 0.01f)
+                                    for (float t21 = -0.2f; t21 < 0.2f; t21 += 0.025f)
                                     {
-                                        for (float t31 = -0.02f; t31 < 0.02f; t31 += 0.01f)
+                                        for (float t23 = -0.2f; t23 < 0.2f; t23 += 0.025f)
                                         {
-                                            for (float t32 = -0.02f; t32 < 0.02f; t32 += 0.01f)
+                                            for (float t31 = -0.2f; t31 < 0.2f; t31 += 0.025f)
                                             {
-                        //float t12 = (1f - t11) / 4;
-                        //float t13 = (1f - t11) / 4;
-                        //float t21 = (1f - t22) / 4;
-                        //float t23 = (1f - t22) / 4;
-                        //float t31 = (1f - t33) / 4;
-                        //float t32 = (1f - t33) / 4;
-                                                DenseMatrix matrix = DenseMatrix.Create(3, 3, (row, col) => row == col ? 1 : 0);
-                                                matrix[0, 0] = t11;
-                                                matrix[0, 1] = t12;
-                                                matrix[0, 2] = t13;
-                                                matrix[1, 0] = t21;
-                                                matrix[1, 1] = t22;
-                                                matrix[1, 2] = t23;
-                                                matrix[2, 0] = t31;
-                                                matrix[2, 1] = t32;
-                                                matrix[2, 2] = t33;
+                                                for (float t32 = -0.2f; t32 < 0.2f; t32 += 0.025f)
+                                                {
+                                                    //float t12 = (1f - t11) / 4;
+                                                    //float t13 = (1f - t11) / 4;
+                                                    //float t21 = (1f - t22) / 4;
+                                                    //float t23 = (1f - t22) / 4;
+                                                    //float t31 = (1f - t33) / 4;
+                                                    //float t32 = (1f - t33) / 4;
+                                                    DenseMatrix matrix = DenseMatrix.Create(3, 3, (row, col) => row == col ? 1 : 0);
+                                                    matrix[0, 0] = t11;
+                                                    matrix[0, 1] = t12;
+                                                    matrix[0, 2] = t13;
+                                                    matrix[1, 0] = t21;
+                                                    matrix[1, 1] = t11;//t22;
+                                                    matrix[1, 2] = t23;
+                                                    matrix[2, 0] = t31;
+                                                    matrix[2, 1] = t32;
+                                                    matrix[2, 2] = t11;//t33;
 
-                                                Tuple<RawBitmapData, DenseMatrix> stateTuple = new Tuple<RawBitmapData, DenseMatrix>(sourceData, matrix);
+                                                    Tuple<RawBitmapData, DenseMatrix> stateTuple = new Tuple<RawBitmapData, DenseMatrix>(sourceData, matrix);
 
-                                                ExecuteAsync(new WaitCallback(RunTransformation), stateTuple);
+                                                    //while (numberOfTasks > 1000000)
+                                                    //{
+                                                    //    Thread.Sleep(50);
+                                                    //}
+
+                                                    RunTransformation(stateTuple);
+                                                    //ExecuteAsync(new WaitCallback(RunTransformation), stateTuple);
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
-                        }
-                    }
-                }
+                    //    }
+                    //}
+                }), null);
             }
         }
 
@@ -318,17 +330,56 @@ namespace ImageColorMatch
             RawBitmapData sourceData = stateTuple.Item1;
             DenseMatrix matrix = stateTuple.Item2;
 
-            RawBitmapData output = new RawBitmapData(sourceData.Width, sourceData.Height);
+            RawBitmapData output = null;
 
-            for (int x = 0; x < sourceData.Width; x++)
+            bool match = true;
+            foreach (var area in areas)
             {
-                for (int y = 0; y < sourceData.Height; y++)
+                int rawargbValue = area.InputColor.ToArgb();
+                DenseVector vector = new DenseVector(new float[] { rawargbValue >> 16 & 0xFF, rawargbValue >> 8 & 0xFF, rawargbValue & 0xFF });
+                DenseVector converted = matrix * vector;
+                rawargbValue = 0xFF << 24 | converted[0].ToTrimmedByte() << 16 | converted[1].ToTrimmedByte() << 8 | converted[2].ToTrimmedByte();
+                Color average = Color.FromArgb(rawargbValue);
+
+                if (average != area.ExpectedColor)
                 {
-                    int rawargbValue = sourceData.GetRawARGBValue(x, y);
-                    DenseVector vector = new DenseVector(new float[] { rawargbValue >> 16 & 0xFF, rawargbValue >> 8 & 0xFF, rawargbValue & 0xFF });
-                    DenseVector converted = matrix * vector;
-                    rawargbValue = 0xFF << 24 | converted[0].ToTrimmedByte() << 16 | converted[1].ToTrimmedByte() << 8 | converted[2].ToTrimmedByte();
-                    output.SetRawARGBValue(x, y, rawargbValue);
+                    match = false;
+                    break;
+                }
+                else
+                {
+                    output = new RawBitmapData(sourceData.Width, sourceData.Height);
+
+                    for (int x = 0; x < sourceData.Width; x++)
+                    {
+                        for (int y = 0; y < sourceData.Height; y++)
+                        {
+                            int rawargbValue2 = sourceData.GetRawARGBValue(x, y);
+                            DenseVector vector2 = new DenseVector(new float[] { rawargbValue2 >> 16 & 0xFF, rawargbValue2 >> 8 & 0xFF, rawargbValue2 & 0xFF });
+                            DenseVector converted2 = matrix * vector2;
+                            rawargbValue2 = 0xFF << 24 | converted2[0].ToTrimmedByte() << 16 | converted2[1].ToTrimmedByte() << 8 | converted2[2].ToTrimmedByte();
+                            output.SetRawARGBValue(x, y, rawargbValue2);
+                        }
+                    }
+
+                    string combo = String.Format("partial_{9}_{10}_{11}_{0}_{1}_{2}_{3}_{4}_{5}_{6}_{7}_{8}", matrix[0, 0], matrix[0, 1], matrix[0, 2], matrix[1, 0], matrix[1, 1], matrix[1, 2], matrix[2, 0], matrix[2, 1], matrix[2, 2], area.ExpectedColor.R, area.ExpectedColor.G, area.ExpectedColor.B);
+                    Debug.WriteLine(combo);
+                    string filename = @"c:\temp\" + combo + ".png";
+                    using (Bitmap b = output.GetBitmap())
+                    {
+                        b.Save(filename);
+                    }
+                }
+            }
+
+            if (match)
+            {
+                string combo = String.Format("full_{0}_{1}_{2}_{3}_{4}_{5}_{6}_{7}_{8}", matrix[0, 0], matrix[0, 1], matrix[0, 2], matrix[1, 0], matrix[1, 1], matrix[1, 2], matrix[2, 0], matrix[2, 1], matrix[2, 2]);
+                Debug.WriteLine(combo);
+                string filename = @"c:\temp\" + combo + ".png";
+                using (Bitmap b = output.GetBitmap())
+                {
+                    b.Save(filename);
                 }
             }
 
@@ -394,5 +445,30 @@ namespace ImageColorMatch
         public int Width { get; set; }
         public int Height { get; set; }
         public Color ExpectedColor { get; set; }
+        public Color InputColor { get; set; }
+
+        public Color ComputeAverage(RawBitmapData image)
+        {
+            long red = 0;
+            long green = 0;
+            long blue = 0;
+            int count = 0;
+            for (int x = X; x < X + Width; x++)
+            {
+                for (int y = Y; y < Y + Height; y++)
+                {
+                    Color c;
+                    if (image.TryGetPixel(x, y, out c))
+                    {
+                        red += c.R;
+                        green += c.G;
+                        blue += c.B;
+                        count++;
+                    }
+                }
+            }
+
+            return Color.FromArgb((int)(red / count), (int)green / count, (int)blue / count);
+        }
     }
 }
